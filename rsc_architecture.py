@@ -4,7 +4,8 @@ from enum import Enum
 from binaryninja.log import log_info
 from binaryninja.architecture import Architecture
 from binaryninja.function import RegisterInfo, InstructionInfo, InstructionTextToken
-from binaryninja.enums import InstructionTextTokenType
+from binaryninja.enums import InstructionTextTokenType, BranchType
+from binaryninja.lowlevelil import LowLevelILFunction
 
 
 class RSCInstruction(Enum):
@@ -57,10 +58,18 @@ class RSC(Architecture):
                 name, operand = struct.unpack('ii', data[:8])
             case _:
                 return None
-            
         res = InstructionInfo()
         res.length = ret_length
-        return res
+        match name:
+            case 5:
+                assert(type(operand) == int)
+                res.add_branch(BranchType.UnconditionalBranch, operand)
+            case 6:
+                assert(type(operand) == int)
+                res.add_branch(BranchType.TrueBranch, operand)
+                res.add_branch(BranchType.FalseBranch, addr+ret_length)
+            case _:
+                return res
 
     def get_instruction_text(self, data: bytes, addr: int) -> Optional[Tuple[List['function.InstructionTextToken'], int]]:
         match len(data):
@@ -71,7 +80,9 @@ class RSC(Architecture):
                 ret_length = 8
                 data, operand = struct.unpack('ii', data[:8])
             case _:
+                print("The length of the current data", data, len(data), addr)
                 return None
+        print("The current data", data)
         match data:
             case 1 | 2 | 5 | 6 :
                 name, operand = RSCInstruction(data).name, str(operand)
@@ -81,6 +92,9 @@ class RSC(Architecture):
                 return None
         tokens = [InstructionTextToken(InstructionTextTokenType.TextToken, name), InstructionTextToken(InstructionTextTokenType.TextToken, operand)]
         return tokens, ret_length
+
+    def get_instruction_low_level_il(self, data: bytes, addr: int, il: LowLevelILFunction) -> Optional[int]:
+        return None
         
 
 
