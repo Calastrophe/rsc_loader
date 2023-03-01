@@ -70,6 +70,8 @@ class RSC(Architecture):
             case 8:
                 ret_length = 8
                 data, operand = struct.unpack('ii', data[:8])
+            case _:
+                return None
         match data:
             case 1 | 2 | 5 | 6 :
                 name, operand = RSCInstruction(data).name, str(operand)
