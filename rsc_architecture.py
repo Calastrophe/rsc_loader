@@ -26,11 +26,35 @@ class RSCInstruction(Enum):
     ASHR = 14
     NOT = 15
 
+def disasm(data: bytes, size: int) -> Optional[Tuple[str, str]]:
+    match size:
+        case 8:
+            instr = struct.unpack('i', data[:4])[0]
+            match instr:
+                case 1 | 2 | 5 | 6:
+                    operand = struct.unpack('i', data[4:])[0]
+                    return (instr, operand)
+                case _:
+                    return (instr, " ")
+        case 4 | 5 | 6 | 7:
+            instr = struct.unpack('i', data[:4])[0]
+            match instr:
+                case 0 | 3 | 4 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15:
+                    return (instr, " ")
+                case _:
+                    return None
+        case _:
+            return None
+
+
+
+## TODO: REFACTOR THIS CODE, HOLY MOLY
+## NOTE: DO NOT USE THIS CODE FOR REFERENCE, IT IS HOT GARBAGE
+
 class RSC(Architecture):
     name = 'rsc'
-    address_size = 4 # May need to change
+    address_size = 4
     default_int_size = 4
-    instr_alignment = 1
     max_instr_length = 8
     regs = {
         'ACC': RegisterInfo('ACC', 4),
@@ -49,17 +73,18 @@ class RSC(Architecture):
     stack_pointer = 'sp'
 
     def get_instruction_info(self, data: bytes, addr: int) -> Optional[InstructionInfo]:
-        match len(data):
-            case 4:
-                ret_length = 4
-                name = struct.unpack('i', data[:4])[0]
-            case 8:
-                ret_length = 8
-                name, operand = struct.unpack('ii', data[:8])
+        ## EVERYTHING IS 8 BYTES
+        ## CUT OFF 4 BYTES AND IDENTIFY THE LENGTH OF THE INSTRUCTION
+        ##
+        name, operand = struct.unpack('ii', data[:8])
+        res = InstructionInfo()
+        match name:
+            case 1 | 2 | 5 | 6:
+                res.length = 8
+            case 0 | 3 | 4 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15:
+                res.length = 4
             case _:
                 return None
-        res = InstructionInfo()
-        res.length = ret_length
         match name:
             case 5:
                 assert(type(operand) == int)
@@ -67,30 +92,29 @@ class RSC(Architecture):
             case 6:
                 assert(type(operand) == int)
                 res.add_branch(BranchType.TrueBranch, operand)
-                res.add_branch(BranchType.FalseBranch, addr+ret_length)
+                res.add_branch(BranchType.FalseBranch, addr+8)
             case _:
-                return res
+                pass
+        return res
 
     def get_instruction_text(self, data: bytes, addr: int) -> Optional[Tuple[List['function.InstructionTextToken'], int]]:
-        match len(data):
-            case 4:
-                ret_length = 4
-                data = struct.unpack('i', data[:4])[0]
-            case 8:
-                ret_length = 8
-                data, operand = struct.unpack('ii', data[:8])
-            case _:
-                print("The length of the current data", data, len(data), addr)
-                return None
-        print("The current data", data)
+        if len(data) <= 8:
+            log_info(f"INSTR TEXT {str(data)} {str(len(data))}")
+        if disasm(data, len(data)):
+            data, operand = disasm(data, len(data))
+        else:
+            return None
+        log_info(f"OUTPUT {data} {operand}")
         match data:
             case 1 | 2 | 5 | 6 :
-                name, operand = RSCInstruction(data).name, str(operand)
+                name, operand = RSCInstruction(data).name, hex(operand)
+                ret_length = 8
             case 0 | 3 | 4 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 :
                 name, operand = RSCInstruction(data).name, ""
+                ret_length = 4
             case _:
                 return None
-        tokens = [InstructionTextToken(InstructionTextTokenType.TextToken, name), InstructionTextToken(InstructionTextTokenType.TextToken, operand)]
+        tokens = [InstructionTextToken(InstructionTextTokenType.TextToken, name), InstructionTextToken(InstructionTextTokenType.TextToken, "  "), InstructionTextToken(InstructionTextTokenType.TextToken, operand)]
         return tokens, ret_length
 
     def get_instruction_low_level_il(self, data: bytes, addr: int, il: LowLevelILFunction) -> Optional[int]:
